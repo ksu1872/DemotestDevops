@@ -1,0 +1,85 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: lab-restrict-registries
+spec:
+  background: true
+  rules:
+    - name: only-lab-registry
+      match:
+        any:
+          - resources: {kinds: [Pod], namespaces: [apps]}
+      validate:
+        failureAction: Enforce
+        message: "В apps разрешены только образы из localhost:30500 (собранные Jenkins)."
+        pattern:
+          spec:
+            =(initContainers):
+              - image: "localhost:30500/*"
+            containers:
+              - image: "localhost:30500/*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: lab-disallow-latest
+spec:
+  background: true
+  rules:
+    - name: no-latest-tag
+      match:
+        any:
+          - resources: {kinds: [Pod], namespaces: [apps]}
+      validate:
+        failureAction: Enforce
+        message: "Тег latest (или образ без тега) запрещён."
+        deny:
+          conditions:
+            any:
+              - key: "latest"
+                operator: AnyIn
+                value: "{{ images.containers.*.tag }}"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: lab-pod-hardening
+spec:
+  background: true
+  rules:
+    - name: nonroot-and-limits
+      match:
+        any:
+          - resources: {kinds: [Pod], namespaces: [apps]}
+      validate:
+        failureAction: Enforce
+        message: "Нужны runAsNonRoot=true, allowPrivilegeEscalation=false и limits cpu/memory."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  runAsNonRoot: true
+                  allowPrivilegeEscalation: false
+                resources:
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: lab-require-trivy-gate
+spec:
+  background: false
+  rules:
+    - name: deployment-passed-trivy
+      match:
+        any:
+          - resources: {kinds: [Deployment], namespaces: [apps]}
+      validate:
+        failureAction: Enforce
+        message: "Deployment должен пройти Trivy gate в Jenkins (security.lab/trivy-gate=passed)."
+        pattern:
+          metadata:
+            annotations:
+              security.lab/trivy-gate: "passed"

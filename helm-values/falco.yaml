@@ -1,0 +1,45 @@
+driver:
+  kind: modern_ebpf
+tty: true
+collectors:
+  containerEngine:
+    enabled: true
+    engines:
+      docker: {enabled: false}
+      podman: {enabled: false}
+      containerd:
+        enabled: true
+        sockets: ["/run/k3s/containerd/containerd.sock"]
+      cri:
+        enabled: true
+        sockets: ["/run/k3s/containerd/containerd.sock"]
+falcosidekick:
+  enabled: true
+  webui:
+    enabled: true
+  config:
+    policyreport:
+      enabled: true
+      minimumpriority: warning
+customRules:
+  lab-rules.yaml: |-
+    - rule: Lab shell in apps workload
+      desc: Interactive shell started inside a workload of the apps namespace
+      condition: >
+        spawned_process and container and k8s.ns.name = "apps"
+        and proc.name in (shell_binaries) and proc.tty != 0
+      output: >
+        Shell in apps workload (user=%user.name pod=%k8s.pod.name ns=%k8s.ns.name
+        cmd=%proc.cmdline image=%container.image.repository)
+      priority: WARNING
+      tags: [lab, container, mitre_execution, T1059]
+
+    - rule: Lab sensitive file read in apps workload
+      desc: A process in the apps namespace read /etc/shadow or a service account token
+      condition: >
+        open_read and container and k8s.ns.name = "apps"
+        and (fd.name = /etc/shadow or fd.name startswith /var/run/secrets/kubernetes.io/serviceaccount)
+      output: >
+        Sensitive file read (file=%fd.name pod=%k8s.pod.name cmd=%proc.cmdline)
+      priority: WARNING
+      tags: [lab, container, mitre_credential_access, T1552]

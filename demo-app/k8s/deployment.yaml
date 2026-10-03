@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app
+  namespace: apps
+  annotations:
+    security.lab/trivy-gate: "__TRIVY_GATE__"
+    security.lab/jenkins-build: "__BUILD__"
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: demo-app}}
+  template:
+    metadata: {labels: {app: demo-app}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: app
+          image: __IMAGE__
+          ports: [{containerPort: 8080}]
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          readinessProbe: {httpGet: {path: /healthz, port: 8080}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: demo-app, namespace: apps}
+spec:
+  selector: {app: demo-app}
+  ports: [{port: 80, targetPort: 8080}]

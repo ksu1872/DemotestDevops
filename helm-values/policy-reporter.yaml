@@ -1,0 +1,7 @@
+ui:
+  enabled: true
+plugin:
+  kyverno:
+    enabled: true
+kyvernoPlugin:
+  enabled: true

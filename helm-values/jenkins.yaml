@@ -1,0 +1,47 @@
+controller:
+  additionalPlugins:
+    - job-dsl:latest
+    - credentials-binding:latest
+    - plain-credentials:latest
+    - timestamper:latest
+    - pipeline-stage-view:latest
+  additionalExistingSecrets:
+    - name: lab-pipeline-secrets
+      keyName: defectdojo-api-key
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {memory: 3Gi}
+  JCasC:
+    configScripts:
+      lab: |
+        security:
+          globalJobDslSecurityConfiguration:
+            useScriptSecurity: false
+        credentials:
+          system:
+            domainCredentials:
+              - credentials:
+                  - string:
+                      scope: GLOBAL
+                      id: defectdojo-api-key
+                      description: DefectDojo API v2 token
+                      secret: "${lab-pipeline-secrets-defectdojo-api-key}"
+        jobs:
+          - script: |
+              pipelineJob('devsecops-demo') {
+                description('Trivy -> DefectDojo -> Kyverno-gated deploy')
+                definition {
+                  cpsScm {
+                    scm {
+                      git {
+                        remote { url('${LAB_REPO_URL}') }
+                        branch('*/main')
+                      }
+                    }
+                    scriptPath('pipelines/Jenkinsfile')
+                    lightweight(true)
+                  }
+                }
+              }
+persistence:
+  size: 10Gi

@@ -1,0 +1,108 @@
+pipeline {
+  agent {
+    kubernetes {
+      yamlFile 'pipelines/agent-pod.yaml'
+      defaultContainer 'trivy'
+    }
+  }
+  parameters {
+    choice(name: 'VARIANT', choices: ['vulnerable', 'fixed'], description: 'Какой вариант demo-app собирать')
+    choice(name: 'GATE_MODE', choices: ['enforce', 'report'], description: 'enforce: упасть на gate; report: идти дальше, остановит Kyverno')
+    string(name: 'GATE_SEVERITY', defaultValue: 'CRITICAL', description: 'На каких severity срабатывает gate')
+  }
+  environment {
+    REGISTRY_PUSH   = 'registry.registry.svc.cluster.local:5000'
+    REGISTRY_PULL   = 'localhost:30500'
+    IMAGE_NAME      = 'demo-app'
+    IMAGE_TAG       = "${env.BUILD_NUMBER}-${params.VARIANT}"
+    DOJO_URL        = 'http://defectdojo-django.defectdojo.svc.cluster.local'
+    DOJO_PRODUCT    = 'demo-app'
+    KUBECTL_VERSION = 'v1.31.4'
+  }
+  options {
+    timeout(time: 45, unit: 'MINUTES')
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+    timestamps()
+  }
+  stages {
+    stage('Trivy fs') {
+      steps { sh 'trivy fs --scanners vuln,secret --format json --output trivy-fs.json demo-app' }
+    }
+    stage('Trivy config') {
+      steps { sh 'trivy config --format json --output trivy-config.json demo-app' }
+    }
+    stage('Build (kaniko, no push)') {
+      steps {
+        container(name: 'kaniko', shell: '/busybox/sh') {
+          sh '''
+            ARGS=""
+            if [ "$VARIANT" = "fixed" ]; then
+              ARGS="--build-arg BASE_IMAGE=python:3.12-slim-bookworm --build-arg REQUIREMENTS=requirements-fixed.txt"
+            fi
+            /kaniko/executor --context "dir://$WORKSPACE/demo-app" --dockerfile "$WORKSPACE/demo-app/Dockerfile" \
+              $ARGS --destination "$REGISTRY_PULL/$IMAGE_NAME:$IMAGE_TAG" --no-push --tar-path "$WORKSPACE/image.tar"
+          '''
+        }
+      }
+    }
+    stage('Trivy image + gate') {
+      steps {
+        sh 'trivy image --input image.tar --format json --output trivy-image.json'
+        script {
+          def rc = sh(returnStatus: true, script: 'trivy image --input image.tar --skip-db-update --ignore-unfixed --severity "$GATE_SEVERITY" --exit-code 3 --format table')
+          if (rc != 0 && rc != 3) { error "trivy exited with ${rc}" }
+          env.TRIVY_GATE = (rc == 0) ? 'passed' : 'failed'
+          echo "Trivy gate: ${env.TRIVY_GATE}"
+        }
+      }
+    }
+    stage('Reports -> DefectDojo') {
+      steps {
+        container('tools') {
+          withCredentials([string(credentialsId: 'defectdojo-api-key', variable: 'DD_TOKEN')]) {
+            sh '''
+              for scan in fs config image; do
+                curl -sS --fail-with-body -o /dev/null -w "trivy-$scan: HTTP %{http_code}\\n" \
+                  -X POST "$DOJO_URL/api/v2/reimport-scan/" -H "Authorization: Token $DD_TOKEN" \
+                  -F scan_type="Trivy Scan" -F file=@trivy-$scan.json \
+                  -F product_type_name=Lab -F product_name="$DOJO_PRODUCT" \
+                  -F engagement_name=jenkins-ci -F test_title="trivy-$scan" \
+                  -F auto_create_context=true -F active=true -F verified=false \
+                  -F close_old_findings=true -F minimum_severity=Info \
+                  -F build_id="$BUILD_NUMBER" -F version="$IMAGE_TAG"
+              done
+            '''
+          }
+        }
+      }
+    }
+    stage('Security gate') {
+      when { expression { env.TRIVY_GATE == 'failed' && params.GATE_MODE == 'enforce' } }
+      steps { error "Trivy gate failed: ${params.GATE_SEVERITY} vulnerabilities with a fix available" }
+    }
+    stage('Push') {
+      steps {
+        container(name: 'crane', shell: '/busybox/sh') {
+          sh 'crane push image.tar "$REGISTRY_PUSH/$IMAGE_NAME:$IMAGE_TAG" --insecure'
+        }
+      }
+    }
+    stage('Deploy -> apps') {
+      steps {
+        container('tools') {
+          sh '''
+            curl -sSLo kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" && chmod +x kubectl
+            sed -e "s|__IMAGE__|$REGISTRY_PULL/$IMAGE_NAME:$IMAGE_TAG|" \
+                -e "s|__TRIVY_GATE__|$TRIVY_GATE|" \
+                -e "s|__BUILD__|$BUILD_NUMBER|" demo-app/k8s/deployment.yaml > deploy.yaml
+            ./kubectl apply -f deploy.yaml
+            ./kubectl -n apps rollout status deploy/demo-app --timeout=180s
+          '''
+        }
+      }
+    }
+  }
+  post {
+    always { archiveArtifacts artifacts: 'trivy-*.json', allowEmptyArchive: true }
+  }
+}

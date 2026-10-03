@@ -1,0 +1,11 @@
+host: dojo.teleport.192.168.250.135.nip.io
+site_url: https://dojo.teleport.192.168.250.135.nip.io
+alternativeHosts:
+  - defectdojo-django.defectdojo.svc.cluster.local
+  - defectdojo-django.defectdojo.svc
+  - localhost
+django:
+  ingress:
+    enabled: false
+extraConfigs:
+  DD_CSRF_TRUSTED_ORIGINS: "https://dojo.teleport.192.168.250.135.nip.io,http://localhost:8081"
