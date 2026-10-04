@@ -7,5 +7,13 @@ alternativeHosts:
 django:
   ingress:
     enabled: false
+  uwsgi:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi
 extraConfigs:
   DD_CSRF_TRUSTED_ORIGINS: "https://dojo.teleport.192.168.250.135.nip.io,http://localhost:8081"
