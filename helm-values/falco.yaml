@@ -43,3 +43,5 @@ customRules:
         Sensitive file read (file=%fd.name pod=%k8s.pod.name cmd=%proc.cmdline)
       priority: WARNING
       tags: [lab, container, mitre_credential_access, T1552]
+falco:
+  rule_matching: all
