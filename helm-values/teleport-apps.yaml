@@ -1,0 +1,17 @@
+roles: app
+apps:
+  - name: jenkins
+    uri: http://jenkins.jenkins.svc.cluster.local:8080
+    labels: {lab-tier: ci}
+  - name: dojo
+    uri: http://defectdojo-django.defectdojo.svc.cluster.local:80
+    labels: {lab-tier: security}
+  - name: superset
+    uri: http://superset.superset.svc.cluster.local:8088
+    labels: {lab-tier: security}
+  - name: policy-reporter
+    uri: http://policy-reporter-ui.policy-reporter.svc.cluster.local:8080
+    labels: {lab-tier: security}
+  - name: falco
+    uri: http://falco-falcosidekick-ui.falco.svc.cluster.local:2802
+    labels: {lab-tier: security}

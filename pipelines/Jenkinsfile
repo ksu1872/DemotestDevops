@@ -14,6 +14,8 @@ pipeline {
     REGISTRY_PUSH   = 'registry.registry.svc.cluster.local:5000'
     REGISTRY_PULL   = 'localhost:30500'
     IMAGE_NAME      = 'demo-app'
+    VARIANT         = "${params.VARIANT}"
+    GATE_SEVERITY   = "${params.GATE_SEVERITY}"
     IMAGE_TAG       = "${env.BUILD_NUMBER}-${params.VARIANT}"
     DOJO_URL        = 'http://defectdojo-django.defectdojo.svc.cluster.local'
     DOJO_PRODUCT    = 'demo-app'
@@ -29,7 +31,7 @@ pipeline {
       steps { sh 'trivy fs --scanners vuln,secret --format json --output trivy-fs.json demo-app' }
     }
     stage('Trivy config') {
-      steps { sh 'trivy config --format json --output trivy-config.json demo-app' }
+      steps { sh 'trivy config --skip-check-update --format json --output trivy-config.json demo-app' }
     }
     stage('Build (kaniko, no push)') {
       steps {

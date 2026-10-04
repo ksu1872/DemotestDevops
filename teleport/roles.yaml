@@ -1,0 +1,31 @@
+kind: role
+version: v7
+metadata:
+  name: lab-k8s-admin
+spec:
+  options:
+    max_session_ttl: 8h
+  allow:
+    kubernetes_groups: ["system:masters"]
+    kubernetes_labels: {"*": "*"}
+    kubernetes_resources:
+      - {kind: "*", namespace: "*", name: "*", verbs: ["*"]}
+    app_labels: {"*": "*"}
+---
+kind: role
+version: v7
+metadata:
+  name: lab-auditor
+spec:
+  options:
+    max_session_ttl: 8h
+  allow:
+    kubernetes_groups: ["lab-readonly"]
+    kubernetes_labels: {"*": "*"}
+    kubernetes_resources:
+      - {kind: "*", namespace: "*", name: "*", verbs: ["get", "list", "watch"]}
+    app_labels:
+      lab-tier: security
+    request:
+      roles: [lab-k8s-admin]
+      max_duration: 2h
