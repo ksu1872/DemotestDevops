@@ -22,7 +22,7 @@ spec:
           image: __IMAGE__
           ports: [{containerPort: 8080}]
           securityContext:
-            runAsNonRoot: true
+            runAsNonRoot: false
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
